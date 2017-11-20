@@ -31,6 +31,8 @@ public class DataBaseService {
 
     private static final String findByDescriptionStatement = "SELECT * FROM entries WHERE description=?";
 
+    private static final String findByFeedStatement = "SELECT * FROM entries where feed=?";
+
     public void init (Handler<AsyncResult<Void>> handler, JsonObject config, Vertx vertx) {
         dbClient = MySQLClient.createNonShared(vertx, config);
 
@@ -69,7 +71,7 @@ public class DataBaseService {
                         System.out.println("insert succeded for " + item.getLink());
                     }
                     else {
-                        System.err.println("insert failed for " + item.getLink() + " " + ar.cause());
+                        System.err.println("insert failed for " + item.getLink() + " " + insert.cause());
                     }
                 });
                 sqlConnection.close();;
@@ -93,6 +95,11 @@ public class DataBaseService {
     public void findByDescription(String description, Handler<AsyncResult<List<Item>>> handler) {
         System.out.println("Finding description " + description);
         find(findByDescriptionStatement, description, handler);
+    }
+
+    public void findByFeed(String feed, Handler<AsyncResult<List<Item>>> handler) {
+        System.out.println("Finding feed " + feed);
+        find(findByFeedStatement, feed, handler);
     }
 
     private void find(String statement, String param, Handler<AsyncResult<List<Item>>> handler) {
