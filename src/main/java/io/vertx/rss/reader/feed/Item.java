@@ -1,4 +1,4 @@
-package io.vertx.rss.reader;
+package io.vertx.rss.reader.feed;
 
 public class Item {
 

@@ -1,9 +1,8 @@
-package io.vertx.rss.reader;
+package io.vertx.rss.reader.http;
 
 import com.rometools.rome.feed.synd.SyndEntry;
 import com.rometools.rome.feed.synd.SyndFeed;
 import com.rometools.rome.io.FeedException;
-import com.rometools.rome.io.SyndFeedInput;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
@@ -16,11 +15,10 @@ import io.vertx.ext.web.RoutingContext;
 import io.vertx.ext.web.client.HttpResponse;
 import io.vertx.ext.web.client.WebClient;
 import io.vertx.ext.web.handler.BodyHandler;
-import org.jdom2.Element;
-import org.xml.sax.InputSource;
+import io.vertx.rss.reader.db.DataBaseService;
+import io.vertx.rss.reader.feed.FeedUtils;
+import io.vertx.rss.reader.feed.Item;
 
-import java.io.ByteArrayInputStream;
-import java.io.InputStream;
 import java.util.List;
 
 public class ReaderVerticle extends AbstractVerticle {
@@ -69,9 +67,8 @@ public class ReaderVerticle extends AbstractVerticle {
                     HttpResponse<Buffer> httpResponse = ar.result();
                     //parse feed
                     try {
-                        SyndFeed syndFeed = feedFromResponse(httpResponse);
-                        int updateInterval = 5;
-                                //getUpdateInterval(syndFeed);
+                        SyndFeed syndFeed = FeedUtils.feedFromResponse(httpResponse);
+                        int updateInterval = FeedUtils.getUpdateInterval(syndFeed);
 
                         List<SyndEntry> entries = syndFeed.getEntries();
                         for (SyndEntry syndEntry : entries) {
@@ -145,58 +142,13 @@ public class ReaderVerticle extends AbstractVerticle {
         }
         return true;
     }
-
-    private int getUpdateInterval(SyndFeed syndFeed) throws NumberFormatException {
-        List<Element> makups = syndFeed.getForeignMarkup();
-        String updatePeriod = "";
-        int updateFrequency = 1;
-        for (Element element : makups) {
-            if (element.getName().equals("updatePeriod")) {
-                updatePeriod = element.getValue();
-            }
-            if (element.getName().equals("updateFrequency")) {
-                updateFrequency = Integer.parseInt(element.getValue());
-            }
-        }
-
-        if (!updatePeriod.isEmpty()) {
-            int updatePeriodInSeconds = getUpdatePeriodFromString(updatePeriod);
-            return updatePeriodInSeconds / updateFrequency;
-        }
-        else {
-            return 300;
-        }
-    }
-
-    private int getUpdatePeriodFromString(String updatePeriod) throws NumberFormatException {
-        switch (updatePeriod) {
-            case  "hourly" :
-                return 3600;
-            case "daily":
-                return 3600 * 24;
-            case "weekly":
-                return 3600 * 24 * 7;
-            case "monthly":
-                return 3600 * 24 * 7 * 4;
-            case "yearly":
-                return 3600 * 24 * 7 * 4 * 12;
-            default:
-                throw new NumberFormatException("the update Period is misformatted");
-        }
-    }
-
-    private SyndFeed feedFromResponse(HttpResponse<Buffer> httpResponse) throws FeedException {
-        InputStream is = new ByteArrayInputStream(httpResponse.body().getBytes());
-        SyndFeedInput syndFeedInput = new SyndFeedInput();
-        return syndFeedInput.build( new InputSource(is));
-    }
-
+    
     private void updateHandler(AsyncResult<HttpResponse<Buffer>> result) {
         System.out.println("Another update " + System.currentTimeMillis());
         if (result.succeeded()) {
             SyndFeed syndFeed = null;
             try {
-                syndFeed = feedFromResponse(result.result());
+                syndFeed = FeedUtils.feedFromResponse(result.result());
             } catch (FeedException e) {
                 e.printStackTrace();
             }

@@ -1,4 +1,4 @@
-package io.vertx.rss.reader;
+package io.vertx.rss.reader.db;
 
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
@@ -10,6 +10,7 @@ import io.vertx.ext.asyncsql.AsyncSQLClient;
 import io.vertx.ext.asyncsql.MySQLClient;
 import io.vertx.ext.sql.ResultSet;
 import io.vertx.ext.sql.SQLConnection;
+import io.vertx.rss.reader.feed.Item;
 
 import java.util.ArrayList;
 import java.util.List;
