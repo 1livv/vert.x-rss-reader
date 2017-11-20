@@ -2,14 +2,12 @@ package io.vertx.rss.reader;
 
 import com.rometools.rome.feed.synd.SyndEntry;
 import com.rometools.rome.feed.synd.SyndFeed;
-import com.rometools.rome.feed.synd.SyndFeedImpl;
 import com.rometools.rome.io.FeedException;
 import com.rometools.rome.io.SyndFeedInput;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
 
-import io.vertx.core.Handler;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.web.ParsedHeaderValues;
@@ -18,7 +16,6 @@ import io.vertx.ext.web.RoutingContext;
 import io.vertx.ext.web.client.HttpResponse;
 import io.vertx.ext.web.client.WebClient;
 import io.vertx.ext.web.handler.BodyHandler;
-import org.jdom2.Attribute;
 import org.jdom2.Element;
 import org.xml.sax.InputSource;
 
@@ -29,6 +26,8 @@ import java.util.List;
 public class ReaderVerticle extends AbstractVerticle {
 
     private WebClient client;
+
+    DataBaseService dataBaseService = new DataBaseService();
 
     @Override
     public void start(Future<Void> startFuture) {
@@ -43,7 +42,22 @@ public class ReaderVerticle extends AbstractVerticle {
                 .listen(8080);
 
         client = WebClient.create(vertx);
-        startFuture.complete();
+        Future<Void> dbfuture = Future.future();
+        JsonObject config = new JsonObject()
+                .put("host", "localhost")
+                .put("username", "root")
+                .put("password", "password")
+                .put("database", "rssfeed");
+
+        dataBaseService.init(dbfuture.completer(), config, vertx);
+        dbfuture.setHandler(ar -> {
+            if (ar.succeeded()) {
+                startFuture.complete();
+            }
+            else {
+                System.out.println("could not get db from verticle " + ar.cause());
+            }
+        });
     }
 
     private void addNewFeedHandler(RoutingContext rc) {
@@ -56,18 +70,21 @@ public class ReaderVerticle extends AbstractVerticle {
                     //parse feed
                     try {
                         SyndFeed syndFeed = feedFromResponse(httpResponse);
-                        int updateInterval = getUpdateInterval(syndFeed);
+                        int updateInterval = 5;
+                                //getUpdateInterval(syndFeed);
 
                         List<SyndEntry> entries = syndFeed.getEntries();
                         for (SyndEntry syndEntry : entries) {
-                            System.out.println("title:" + syndEntry.getTitle());
-                            System.out.println("Description:" + syndEntry.getDescription().getValue());
-                            System.out.println("Link:" + syndEntry.getLink());
+                            Item item = new Item().withLink(syndEntry.getLink())
+                                    .withTitle(syndEntry.getTitle())
+                                    .withDescription(syndEntry.getDescription().getValue())
+                                    .withFeed(endpoint);
+                            dataBaseService.insert(item);
                         }
 
                         System.out.println("The feed will be read in another " + updateInterval);
                         //schedule job
-                        vertx.setPeriodic((long) updateInterval, id -> {
+                        vertx.setPeriodic((long) updateInterval * 1000, id -> {
                             client.getAbs(endpoint).send(this::updateHandler);
                         });
 
@@ -142,8 +159,13 @@ public class ReaderVerticle extends AbstractVerticle {
             }
         }
 
-        int updatePeriodInSeconds = getUpdatePeriodFromString(updatePeriod);
-        return updatePeriodInSeconds/updateFrequency;
+        if (!updatePeriod.isEmpty()) {
+            int updatePeriodInSeconds = getUpdatePeriodFromString(updatePeriod);
+            return updatePeriodInSeconds / updateFrequency;
+        }
+        else {
+            return 300;
+        }
     }
 
     private int getUpdatePeriodFromString(String updatePeriod) throws NumberFormatException {
@@ -178,12 +200,24 @@ public class ReaderVerticle extends AbstractVerticle {
             } catch (FeedException e) {
                 e.printStackTrace();
             }
-
             List<SyndEntry> entries = syndFeed.getEntries();
             for (SyndEntry syndEntry : entries) {
-                System.out.println("title:" + syndEntry.getTitle());
-                System.out.println("Description:" + syndEntry.getDescription().getValue());
-                System.out.println("Link:" + syndEntry.getLink());
+               dataBaseService.findByLink("asdaddsadasd", ar-> {
+                   if (ar.succeeded()) {
+                       List<Item> found = ar.result();
+                       if (found.isEmpty()) {
+                           System.out.println("Putting new item in the db " + syndEntry.getLink());
+                           Item item = new Item().withLink(syndEntry.getLink())
+                                   .withTitle(syndEntry.getTitle())
+                                   .withDescription(syndEntry.getDescription().getValue())
+                                   .withFeed("");
+                           dataBaseService.insert(item);
+                       }
+                       else {
+                           System.err.println("Entry " + syndEntry.getLink() + "already exists");
+                       }
+                   }
+               });
             }
         }
         else {
