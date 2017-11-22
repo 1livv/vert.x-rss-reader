@@ -1,5 +1,7 @@
 package io.vertx.rss.reader.feed;
 
+import io.vertx.core.json.JsonObject;
+
 public class Item {
 
     private String link;
@@ -60,5 +62,12 @@ public class Item {
     public Item withFeed(String feed) {
         setFeed(feed);
         return this;
+    }
+
+    public JsonObject toJson() {
+        return new JsonObject()
+                .put("title", title)
+                .put("link", link)
+                .put("description", description);
     }
 }

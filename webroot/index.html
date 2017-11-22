@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>hello</title>
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+    <script src="http://cdn.jsdelivr.net/sockjs/0.3.4/sockjs.min.js"></script>
+    <script src='https://cdnjs.cloudflare.com/ajax/libs/vertx/3.5.0/vertx-eventbus.js'></script>
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0-beta.2/css/bootstrap.min.css" integrity="sha384-PsH8R72JQ3SOdhVi3uxftmaW6Vc51MKb0q5P2rRUpPvrszuE4W1povHYgTpBfshb" crossorigin="anonymous">
+
+</head>
+<body>
+<div id="parent"></div>
+<script>
+
+    var eb = new EventBus('http://localhost:8080/eventbus');
+
+    eb.onopen = function() {
+
+        console.log("opened event bus");
+        // set a handler to receive a message
+        eb.registerHandler('feed-address', function(error, message) {
+            console.log("got messsage " + message['body'])
+            var parent = document.getElementById('parent')
+            var  div = document.createElement('div')
+            div.className = "card"
+            div.innerHTML = getCard(message['body'])
+            parent.appendChild(div)
+            parent.insertBefore(div, parent.firstChild)
+            document.body.prepen
+        });
+
+    }
+
+    function getCard(item) {
+        var result = "<div class='card-body'>\n" +
+            "<div class='card-body'>" +
+                "<h4 class='card-title'>" + item['title'] + "</h4>\n" +
+                "<p class='card-text'>" + item['description'] + "</p>\n" +
+                "<a class='btn btn-primary' href='" + item['link'] +"'>Press it</a>" +
+            "</div>"
+        return result;
+    }
+</script>
+</body>
+</html>

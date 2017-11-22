@@ -20,8 +20,8 @@ public class DataBaseService {
 
     private AsyncSQLClient dbClient;
 
-    public static final String initStatement = "CREATE TABLE IF NOT EXISTS entries (title VARCHAR(100)," +
-            " link VARCHAR(100), description VARCHAR(1000), feed VARCHAR(100), PRIMARY KEY(link))";
+    public static final String initStatement = "CREATE TABLE IF NOT EXISTS entries (title VARCHAR(500)," +
+            " link VARCHAR(500), description VARCHAR(1000), feed VARCHAR(100), PRIMARY KEY(link))";
 
     private static final String insertStatement = "INSERT INTO entries VALUES(?, ?, ?, ?)";
 
@@ -49,6 +49,8 @@ public class DataBaseService {
                         System.out.println("Failed in initializing the db " + init.cause());
                         handler.handle(Future.failedFuture(init.cause()));
                     }
+                    System.out.println("closing the connection " + ar.result());
+                    sqlConnection.close();
                 });
             }
             else {
@@ -58,23 +60,26 @@ public class DataBaseService {
         });
     }
 
-    public void insert(Item item) {
+    public void insert(Item item, Handler<AsyncResult<Boolean>> handler) {
         System.out.println("inserting");
         dbClient.getConnection(ar -> {
             if (ar.succeeded()) {
-                System.out.println("got connection to the db");
+                System.out.println("got connection to the db  " + ar.result());
                 SQLConnection sqlConnection = ar.result();
                 JsonArray params = new JsonArray().add(item.getTitle())
                         .add(item.getLink()).add(item.getDescription()).add(item.getFeed());
                 sqlConnection.updateWithParams(insertStatement, params, insert -> {
                     if (insert.succeeded()) {
                         System.out.println("insert succeded for " + item.getLink());
+                        handler.handle(Future.succeededFuture());
                     }
                     else {
                         System.err.println("insert failed for " + item.getLink() + " " + insert.cause());
+                        handler.handle(Future.failedFuture(insert.cause()));
                     }
+                    System.out.println("closing the connection " + ar.result());
+                    sqlConnection.close();
                 });
-                sqlConnection.close();;
             }
             else {
                 System.err.println("Could not get connection for db");
@@ -125,8 +130,9 @@ public class DataBaseService {
                         System.err.println("find failed for param " + param);
                         handler.handle(Future.failedFuture(ar.cause()));
                     }
+                    System.out.println("closing the connection " + ar.result());
+                    sqlConnection.close();
                 });
-                sqlConnection.close();
             }
             else {
                 System.err.println("Could not get connection for db");

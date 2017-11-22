@@ -19,6 +19,11 @@ import io.vertx.ext.web.RoutingContext;
 import io.vertx.ext.web.client.HttpResponse;
 import io.vertx.ext.web.client.WebClient;
 import io.vertx.ext.web.handler.BodyHandler;
+import io.vertx.ext.web.handler.StaticHandler;
+import io.vertx.ext.web.handler.sockjs.BridgeOptions;
+import io.vertx.ext.web.handler.sockjs.PermittedOptions;
+import io.vertx.ext.web.handler.sockjs.SockJSHandler;
+import io.vertx.ext.web.handler.sockjs.SockJSHandlerOptions;
 import io.vertx.rss.reader.db.DataBaseService;
 import io.vertx.rss.reader.feed.FeedUtils;
 import io.vertx.rss.reader.feed.Item;
@@ -47,12 +52,23 @@ public class ReaderVerticle extends AbstractVerticle {
         router.post("/add").handler(this::addNewFeedHandler);
         router.get("/items/:name").handler(this::getFeedHandler);
         router.get("/all").handler(this::getAllFeedsHandler);
+        router.get("/static/*").handler(StaticHandler.create());
+
+        SockJSHandlerOptions options = new SockJSHandlerOptions().setHeartbeatInterval(2000);
+        SockJSHandler sockJSHandler = SockJSHandler.create(vertx, options);
+        PermittedOptions inboundPermitted = new PermittedOptions().setAddress("feed-address");
+        PermittedOptions outboundPermitted = new PermittedOptions().setAddress("feed-address");
+        sockJSHandler.bridge(new BridgeOptions().addInboundPermitted(inboundPermitted)
+        .addOutboundPermitted(outboundPermitted));
+        router.route("/eventbus/*").handler(sockJSHandler);
+
         vertx.createHttpServer()
                 .requestHandler(router::accept)
                 .listen(8080);
 
         sharedData = vertx.sharedData();
         feeds = sharedData.getLocalMap("feeds");
+
 
         client = WebClient.create(vertx);
         Future<Void> dbfuture = Future.future();
@@ -147,7 +163,7 @@ public class ReaderVerticle extends AbstractVerticle {
                                     .withTitle(syndEntry.getTitle())
                                     .withDescription(syndEntry.getDescription().getValue())
                                     .withFeed(name);
-                            dataBaseService.insert(item);
+                            saveAndSendItem(item);
                         }
 
                         System.out.println("The feed will be read in another " + updateInterval);
@@ -175,6 +191,51 @@ public class ReaderVerticle extends AbstractVerticle {
                 }
             });
         }
+    }
+
+    private void updateHandler(AsyncResult<HttpResponse<Buffer>> result, String name) {
+        System.out.println("Another update " + System.currentTimeMillis());
+        if (result.succeeded()) {
+            SyndFeed syndFeed = null;
+            try {
+                syndFeed = FeedUtils.feedFromResponse(result.result());
+            } catch (FeedException e) {
+                e.printStackTrace();
+            }
+            List<SyndEntry> entries = syndFeed.getEntries();
+            for (SyndEntry syndEntry : entries) {
+               dataBaseService.findByLink(syndEntry.getLink(), ar-> {
+                   if (ar.succeeded()) {
+                       List<Item> found = ar.result();
+                       if (found.isEmpty()) {
+                           System.out.println("Putting new item in the db " + syndEntry.getLink());
+                           Item item = new Item().withLink(syndEntry.getLink())
+                                   .withTitle(syndEntry.getTitle())
+                                   .withDescription(syndEntry.getDescription().getValue())
+                                   .withFeed(name);
+                           saveAndSendItem(item);
+                       }
+                       else {
+                           System.err.println("Entry " + syndEntry.getLink() + "already exists");
+                       }
+                   }
+               });
+            }
+        }
+        else {
+            System.out.println("the request to update  failed:" + result.cause().getMessage());
+        }
+    }
+
+    private void saveAndSendItem(Item item) {
+        Future<Boolean> insertFuture = Future.future();
+        dataBaseService.insert(item , insertFuture.completer());
+        insertFuture.setHandler(insertResult -> {
+            if (insertResult.succeeded()) {
+                vertx.eventBus().send("feed-address",
+                        item.toJson());
+            }
+        });
     }
 
     private boolean validateRequest(RoutingContext rc) {
@@ -215,38 +276,5 @@ public class ReaderVerticle extends AbstractVerticle {
         }
         return true;
     }
-    
-    private void updateHandler(AsyncResult<HttpResponse<Buffer>> result, String name) {
-        System.out.println("Another update " + System.currentTimeMillis());
-        if (result.succeeded()) {
-            SyndFeed syndFeed = null;
-            try {
-                syndFeed = FeedUtils.feedFromResponse(result.result());
-            } catch (FeedException e) {
-                e.printStackTrace();
-            }
-            List<SyndEntry> entries = syndFeed.getEntries();
-            for (SyndEntry syndEntry : entries) {
-               dataBaseService.findByLink(syndEntry.getLink(), ar-> {
-                   if (ar.succeeded()) {
-                       List<Item> found = ar.result();
-                       if (found.isEmpty()) {
-                           System.out.println("Putting new item in the db " + syndEntry.getLink());
-                           Item item = new Item().withLink(syndEntry.getLink())
-                                   .withTitle(syndEntry.getTitle())
-                                   .withDescription(syndEntry.getDescription().getValue())
-                                   .withFeed(name);
-                           dataBaseService.insert(item);
-                       }
-                       else {
-                           System.err.println("Entry " + syndEntry.getLink() + "already exists");
-                       }
-                   }
-               });
-            }
-        }
-        else {
-            System.out.println("the request to update  failed:" + result.cause().getMessage());
-        }
-    }
+
 }
